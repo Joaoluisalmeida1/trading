@@ -1,6 +1,6 @@
 # Projeto de Trading
 
-Este reposit\u00f3rio contem um esqueleto para desenvolvimento de estrat\u00e9gias de trading algor\u00edtico utilizando Python.
+Este repositorio contem um esqueleto para desenvolvimento de estrategias de trading algor\u00edtico utilizando Python.
 
 ## Objetivo
 

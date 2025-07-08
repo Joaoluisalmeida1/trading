@@ -1,0 +1,9 @@
+ccxt
+pandas
+numpy
+matplotlib
+streamlit
+python-dotenv
+streamlit-option-menu 
+streamlit-lottie 
+requests
