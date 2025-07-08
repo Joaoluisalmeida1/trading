@@ -37,3 +37,10 @@ API_SECRET=sua_senha
 
 Salve o arquivo antes de iniciar a aplica\u00e7\u00e3o.
 
+
+Para iniciar o dashboard execute:
+
+```bash
+streamlit run src/dashboard/app.py
+```
+
