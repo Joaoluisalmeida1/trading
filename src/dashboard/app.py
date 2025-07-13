@@ -23,8 +23,8 @@ st.set_page_config(
 with st.sidebar:
     selected = option_menu(
         menu_title=None,
-        options=["Home", "Backtesting", "Live Trading", "Settings"],
-        icons=["house", "bar-chart-line", "rocket", "gear"],
+        options=["Home", "Backtesting", "Portfolio Backtesting","Live Trading", "Strategy Trading", "PNL Analysis", "Settings"],
+        icons=["house", "bar-chart-line", "bar-chart-line", "rocket", "rocket", "bar-chart-line", "gear"],
         default_index=0,
         key="main-menu"
     )
@@ -34,6 +34,9 @@ from dashboard.page_modules.home import render_home
 from dashboard.page_modules.backtesting import render_backtesting
 from dashboard.page_modules.live_trading import render_live_trading
 from dashboard.page_modules.settings import render_settings
+from dashboard.page_modules.portfoliobacktester import render_portfolio_backtesting
+from dashboard.page_modules.autotrader import render_autotrader
+from dashboard.page_modules.pnl_analysis import render_pnl_analysis
 
 # ─── Initialize Binance exchange once ───────────────────────────────────────
 import ccxt
@@ -54,5 +57,11 @@ elif selected == "Backtesting":
     render_backtesting(exchange)
 elif selected == "Live Trading":
     render_live_trading(exchange)
+elif selected == "Portfolio Backtesting":
+    render_portfolio_backtesting(exchange)
+elif selected == "Strategy Trading":
+    render_autotrader(exchange)
+elif selected == "PNL Analysis":
+    render_pnl_analysis(exchange)
 else:
     render_settings()

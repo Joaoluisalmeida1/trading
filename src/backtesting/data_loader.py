@@ -1,36 +1,38 @@
 import os
 import pandas as pd
 import ccxt
-from dotenv import load_dotenv, find_dotenv
+import time
+from datetime import datetime
 
-# Load API keys
-load_dotenv(find_dotenv())
-API_KEY    = os.getenv("BINANCE_API_KEY")
-API_SECRET = os.getenv("BINANCE_API_SECRET")
-
-# Ensure data cache folder exists
-CACHE_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "data")
-os.makedirs(CACHE_DIR, exist_ok=True)
-
-def fetch_ohlcv(symbol: str, timeframe: str = "1h", since: int = None, limit: int = 500) -> pd.DataFrame:
+def fetch_ohlcv(exchange, symbol: str, timeframe: str = "1h", since: int = None, limit: int = 1000) -> pd.DataFrame:
     """
-    Fetches OHLCV data for `symbol` from Binance (via CCXT), caches it to CSV,
-    and returns a pandas.DataFrame indexed by timestamp.
+    Fetches the latest OHLCV data directly from the exchange. This version is
+    optimized for a live bot and always fetches fresh data, bypassing any file cache.
     """
-    filename = f"{symbol.replace('/', '_')}_{timeframe}_{limit}.csv"
-    path = os.path.join(CACHE_DIR, filename)
+    print(f"Fetching fresh {timeframe} data for {symbol} from exchange...")
+    
+    all_candles = []
+    try:
+        # A single, direct fetch from the exchange is sufficient for a live bot's needs.
+        candles = exchange.fetch_ohlcv(symbol, timeframe, since, limit)
+        if candles:
+            all_candles.extend(candles)
 
-    # Always fetch fresh data (but still cache for inspection)
-    exchange = ccxt.binance({
-        "apiKey": API_KEY,
-        "secret": API_SECRET,
-        "enableRateLimit": True,
-    })
-    data = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=limit)
+    except Exception as e:
+        print(f"An error occurred while fetching data for {symbol}: {e}")
+        return pd.DataFrame() # Return an empty DataFrame on error
+            
+    if not all_candles:
+        return pd.DataFrame()
 
-    df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-    df.set_index("timestamp", inplace=True)
-    df.to_csv(path)
+    df = pd.DataFrame(all_candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df.set_index('timestamp', inplace=True)
+    
+    # This is a critical data cleaning step that remains.
+    # It prevents errors from any incomplete candles the exchange might return.
+    df.dropna(inplace=True)
+
+    print(f"👍 Successfully fetched and cleaned {len(df)} fresh candles for {symbol}.")
 
     return df

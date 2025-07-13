@@ -1,108 +1,95 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-
+from trading.trader import Trader # Assuming your Trader class is accessible
+from streamlit_autorefresh import st_autorefresh
 
 def render_home(exchange):
-    """Home page: connect to Binance and show key metrics"""
+    """
+    Renders the main dashboard homepage, showing a comprehensive overview
+    of the trading account's status and performance.
+    """
     st.title("🤖 Dashboard Home")
-    st.markdown("### Overview: Connection & Key Metrics")
 
-    if exchange is None:
-        st.warning("🔑 Binance not initialized. Check API keys in `.env`.")
+    # --- Auto-refresh the page every 60 seconds ---
+    st_autorefresh(interval=60000, key="home_refresher")
+
+    # Use the Trader class for all data fetching to ensure consistency
+    if 'trader' not in st.session_state:
+        st.warning("Trader not initialized. Please visit the Live Trading page first.")
         return
+        
+    trader = st.session_state.trader
+    st.success("✅ Connected to Binance")
 
-    try:
-        st.success("✅ Connected to Binance")
+    # --- 1. Key Performance Indicators (KPIs) ---
+    st.header("Key Metrics")
 
-        # Fetch balances and filter non-zero
-        balances = exchange.fetch_balance()["total"]
-        non_zero = {asset: amt for asset, amt in balances.items() if amt and amt > 0}
+    # Fetch all data points at once
+    total_equity = trader.get_total_equity()
+    usdc_balance = trader.get_usdc_balance()
+    pnl_24h_usd, pnl_24h_pct = trader.get_24h_performance()
 
-        # Compute values in USDC
-        total_usdc = balances.get("USDC", 0.0)
-        asset_values = {}
-        for asset, amt in non_zero.items():
-            if asset == "USDC":
-                asset_values[asset] = amt
-            else:
-                try:
-                    ticker = exchange.fetch_ticker(f"{asset}/USDC")
-                    value = amt * ticker["last"]
-                    asset_values[asset] = value
-                    total_usdc += value
-                except Exception:
-                    asset_values[asset] = 0.0
+    kpi_cols = st.columns(3)
+    kpi_cols[0].metric(label="📈 Total Account Equity", value=f"${total_equity:,.2f}")
+    kpi_cols[1].metric(label="💰 Available Buying Power", value=f"${usdc_balance:,.2f}")
+    kpi_cols[2].metric(label="⏱️ 24h P&L", value=f"${pnl_24h_usd:,.2f}", delta=f"{pnl_24h_pct:.2f}%")
+    st.divider()
 
-        # Display individual metrics and total
-        cols = st.columns(len(asset_values) + 1)
-        for idx, (asset, value) in enumerate(asset_values.items()):
-            display_amount = balances.get(asset, 0.0)
-            cols[idx].metric(f"{asset} Balance", f"{display_amount:.4f}")
-        cols[-1].metric("Total Value (USDC)", f"{total_usdc:.2f}")
+    # --- 2. Portfolio Allocation ---
+    st.header("Portfolio Breakdown")
 
-        # Portfolio Allocation Donut Chart
-        st.subheader("📊 Portfolio Allocation")
-        df_alloc = pd.DataFrame.from_dict(asset_values, orient='index', columns=['value'])
-        df_alloc = df_alloc.reset_index().rename(columns={'index':'asset'})
+    open_positions_df = trader.get_open_positions()
+    
+    # Add USDC balance to the DataFrame for the pie chart
+    portfolio_df = open_positions_df.copy()
+    if 'Value (USDC)' in portfolio_df.columns:
+        usdc_row = pd.DataFrame([{'Symbol': 'USDC', 'Value (USDC)': usdc_balance}])
+        chart_df = pd.concat([portfolio_df[['Symbol', 'Value (USDC)']], usdc_row], ignore_index=True)
+    else:
+        chart_df = pd.DataFrame([{'Symbol': 'USDC', 'Value (USDC)': usdc_balance}])
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.subheader("📊 Allocation Chart")
         fig = px.pie(
-            df_alloc,
-            names='asset',
-            values='value',
+            chart_df,
+            names='Symbol',
+            values='Value (USDC)',
             hole=0.4,
-            title='Portfolio Allocation',
+            title='Portfolio Allocation by Value',
         )
         fig.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig, use_container_width=True)
 
-        # 24h P&L and Performance
-        st.subheader("⏱️ 24h Performance Metrics")
-        pnl_usd = 0.0
-        prev_total = 0.0
-        for asset, amt in non_zero.items():
-            if asset == "USDC":
-                prev_total += amt
-                continue
-            try:
-                ticker = exchange.fetch_ticker(f"{asset}/USDC")
-                prev_price = ticker.get('info', {}).get('open', ticker['last'])
-                prev_value = amt * prev_price
-                current_value = amt * ticker['last']
-                pnl_usd += (current_value - prev_value)
-                prev_total += prev_value
-            except Exception:
-                prev_total += amt * ticker.get('last', 0.0)
-        change_abs = pnl_usd
-        change_pct = (pnl_usd / prev_total * 100) if prev_total else 0.0
-        st.metric("24h P&L (USDC)", f"{change_abs:.2f}", delta=f"{change_pct:.2f}%")
+    with col2:
+        st.subheader("📋 Asset Details")
+        st.dataframe(open_positions_df, use_container_width=True)
 
-        # Open Orders & Quick Actions
-        st.subheader("📝 Open Orders")
-        exchange.options["warnOnFetchOpenOrdersWithoutSymbol"] = False
-        orders = exchange.fetch_open_orders()
-        if orders:
-            df_orders = pd.DataFrame(orders)[['symbol','side','amount','price','timestamp']]
-            df_orders['timestamp'] = pd.to_datetime(df_orders['timestamp'], unit='ms')
-            st.dataframe(df_orders, use_container_width=True)
-            if st.button("❌ Cancel All Orders", key="cancel_open_orders"):
-                for o in orders:
-                    exchange.cancel_order(o['id'], o['symbol'])
-                st.success("All open orders canceled")
+    st.divider()
+
+    # --- 3. The Ledger (Consistent with Live Trading Page) ---
+    st.header("Account Activity")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("⏳ Open Orders")
+        open_orders_df = trader.get_open_orders()
+        if not open_orders_df.empty:
+            st.dataframe(open_orders_df, use_container_width=True)
+            if st.button("❌ Cancel All Open Orders", key="cancel_all"):
+                for index, order in open_orders_df.iterrows():
+                    trader.cancel_order(order['Order ID'], order['symbol'])
+                st.success("All open orders have been cancelled.")
+                st.rerun()
         else:
-            st.info("No open orders")
+            st.info("No open orders.")
 
-        # Recent Trades Feed
+    with col2:
         st.subheader("⚡ Recent Trades")
-        try:
-            trades = exchange.fetch_my_trades(limit=5)
-            if trades:
-                df_trades = pd.DataFrame(trades)[['timestamp','symbol','side','amount','price']]
-                df_trades['timestamp'] = pd.to_datetime(df_trades['timestamp'], unit='ms')
-                st.table(df_trades)
-            else:
-                st.info("No recent trades")
-        except Exception:
-            st.error("Failed to fetch recent trades")
-
-    except Exception as e:
-        st.error(f"❌ Failed to load Home page data: {e}")
+        recent_trades_df = trader.get_recent_trades(limit=10)
+        
+        if not recent_trades_df.empty:
+            st.dataframe(recent_trades_df, use_container_width=True)
+        else:
+            st.info("No recent trades found.")
